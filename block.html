@@ -1,7 +1,8 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Isometric Treasure Hunt</title>
+    <title>Isometric Treasure Hunt (Mobile)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <style>
         body {
             margin: 0;
@@ -10,9 +11,15 @@
             align-items: center;
             min-height: 100vh;
             background: #87CEEB;
+            overflow: hidden;
+            touch-action: none; /* Prevent default touch behaviors */
         }
         canvas {
             border: 1px solid black;
+            width: 100%;
+            height: 100%;
+            max-width: 800px;
+            max-height: 600px;
         }
         #ui {
             position: absolute;
@@ -21,26 +28,78 @@
             font-family: Arial, sans-serif;
             color: white;
             text-shadow: 1px 1px 2px black;
+            font-size: 16px;
+        }
+        #controls {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .touch-btn {
+            width: 60px;
+            height: 60px;
+            background: rgba(255, 255, 255, 0.7);
+            border: 2px solid #000;
+            border-radius: 50%;
+            font-size: 20px;
+            text-align: center;
+            line-height: 60px;
+            cursor: pointer;
+            user-select: none;
         }
     </style>
 </head>
 <body>
-    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <canvas id="gameCanvas"></canvas>
     <div id="ui">
         Coins: <span id="coinCount">0</span><br>
         Time: <span id="timer">30</span>s<br>
-        <button id="resetBtn">Reset Game</button>
+        <button id="resetBtn">Reset</button>
+    </div>
+    <div id="controls">
+        <div style="display: flex; justify-content: center;">
+            <div id="upBtn" class="touch-btn">↑</div>
+        </div>
+        <div style="display: flex; justify-content: space-between;">
+            <div id="leftBtn" class="touch-btn">←</div>
+            <div id="rightBtn" class="touch-btn">→</div>
+        </div>
+        <div style="display: flex; justify-content: center;">
+            <div id="downBtn" class="touch-btn">↓</div>
+        </div>
     </div>
 
     <script>
         const canvas = document.getElementById("gameCanvas");
         const ctx = canvas.getContext("2d");
 
+        // Responsive canvas size
+        function resizeCanvas() {
+            const maxWidth = 800;
+            const maxHeight = 600;
+            const aspectRatio = maxWidth / maxHeight;
+            const windowWidth = window.innerWidth;
+            const windowHeight = window.innerHeight - 100; // Account for controls
+
+            if (windowWidth / windowHeight > aspectRatio) {
+                canvas.height = Math.min(windowHeight, maxHeight);
+                canvas.width = canvas.height * aspectRatio;
+            } else {
+                canvas.width = Math.min(windowWidth, maxWidth);
+                canvas.height = canvas.width / aspectRatio;
+            }
+        }
+        window.addEventListener("resize", resizeCanvas);
+        resizeCanvas();
+
         // Game settings
         const tileSize = 30;
         const isoAngle = Math.PI / 6;
         const maxTime = 30;
-        const offsetY = 150;
+        const offsetY = canvas.height * 0.25; // Dynamic offset
 
         // Player
         const player = {
@@ -65,7 +124,7 @@
         let timeLeft = maxTime;
         let lastFrameTime = performance.now();
 
-        // Map (0=floor, 1=wall, 2=coin spawn)
+        // Map
         const map = [
             [1,1,1,1,1,1,1,1,1,1],
             [1,0,0,0,1,0,0,2,0,1],
@@ -79,8 +138,35 @@
             [1,1,1,1,1,1,1,1,1,1]
         ];
 
-        // Input
+        // Touch controls
         let keys = {};
+        const buttons = {
+            up: document.getElementById("upBtn"),
+            down: document.getElementById("downBtn"),
+            left: document.getElementById("leftBtn"),
+            right: document.getElementById("rightBtn")
+        };
+
+        function addTouchListeners(btn, key) {
+            btn.addEventListener("touchstart", (e) => {
+                e.preventDefault();
+                keys[key] = true;
+            });
+            btn.addEventListener("touchend", (e) => {
+                e.preventDefault();
+                keys[key] = false;
+            });
+            // Mouse fallback for desktop testing
+            btn.addEventListener("mousedown", () => keys[key] = true);
+            btn.addEventListener("mouseup", () => keys[key] = false);
+        }
+
+        addTouchListeners(buttons.up, "ArrowUp");
+        addTouchListeners(buttons.down, "ArrowDown");
+        addTouchListeners(buttons.left, "ArrowLeft");
+        addTouchListeners(buttons.right, "ArrowRight");
+
+        // Keyboard fallback
         document.addEventListener("keydown", (e) => {
             keys[e.key] = true;
             e.preventDefault();
@@ -90,7 +176,7 @@
             e.preventDefault();
         });
 
-        // Manual reset button
+        // Reset button
         document.getElementById("resetBtn").addEventListener("click", resetGame);
 
         // Convert coordinates
@@ -161,7 +247,6 @@
                 player.isoY = newY;
             }
 
-            // Check coin collision
             coins.forEach(coin => {
                 if (!coin.collected && 
                     Math.abs(player.isoX - coin.isoX) < 0.5 &&
@@ -173,7 +258,6 @@
                 }
             });
 
-            // Check enemy collision
             enemies.forEach(enemy => {
                 if (Math.abs(player.isoX - enemy.isoX) < 0.5 &&
                     Math.abs(player.isoY - enemy.isoY) < 0.5) {
@@ -190,14 +274,13 @@
                 let newX = enemy.isoX + enemy.speed * enemy.directionX;
                 let newY = enemy.isoY + enemy.speed * enemy.directionY;
 
-                // Clamp positions to stay within map (0 to 9)
                 if (newX < 0 || newX > 9 || newY < 0 || newY > 9 || map[Math.floor(newY)][Math.floor(newX)] === 1) {
                     let directions = [[-1,0], [1,0], [0,-1], [0,1]];
                     let newDir = directions[Math.floor(Math.random() * 4)];
                     enemy.directionX = newDir[0];
                     enemy.directionY = newDir[1];
-                    newX = enemy.isoX; // Revert to current position
-                    newY = enemy.isoY; // Revert to current position
+                    newX = enemy.isoX;
+                    newY = enemy.isoY;
                 } else {
                     enemy.isoX = newX;
                     enemy.isoY = newY;
@@ -242,7 +325,6 @@
 
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Draw map
             for (let y = 0; y < map.length; y++) {
                 for (let x = 0; x < map[y].length; x++) {
                     if (map[y][x] === 1) {
@@ -253,22 +335,18 @@
                 }
             }
 
-            // Draw coins
             coins.forEach(coin => {
                 if (!coin.collected) {
                     drawBlock(coin.isoX, coin.isoY, 10, { top: "#FFD700", left: "#DAA520", right: "#EEC900" });
                 }
             });
 
-            // Draw enemies
             enemies.forEach(enemy => {
                 drawBlock(enemy.isoX, enemy.isoY, 20, { top: "#4444FF", left: "#3333DD", right: "#3333EE" });
             });
 
-            // Draw player
             drawBlock(player.isoX, player.isoY, 20, { top: "#FF4444", left: "#DD3333", right: "#EE3333" });
 
-            // Game state messages
             if (gameWon) {
                 ctx.fillStyle = "white";
                 ctx.font = "40px Arial";
